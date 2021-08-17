@@ -1,0 +1,5 @@
+subscription_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+user_initials = "aaa"
+location = "UK South"
+location_short = "uks"
+vm_size = "Standard_NV6_Promo"
