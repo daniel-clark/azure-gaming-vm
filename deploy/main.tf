@@ -51,19 +51,26 @@ resource "azurerm_network_interface" "main_nic" {
 	name				= "main_nic"
 	location			= azurerm_resource_group.main.location
 	resource_group_name = azurerm_resource_group.main.name
+	enable_ip_forwarding = true
+	
 
 	ip_configuration {
 	name							= "internal"
-	subnet_id						= azurerm_subnet.main_subnet.id
+	subnet_id						= "${azurerm_subnet.main_subnet.id}"
 	private_ip_address_allocation	= "Dynamic"
-	public_ip_address_id			= azurerm_public_ip.main_ip.id
+	public_ip_address_id			= "${azurerm_public_ip.main_ip.id}"
 	}
 }
 
+resource "azurerm_network_interface_security_group_association" "nic_nsg_assoc" {
+  network_interface_id      = azurerm_network_interface.main_nic.id
+  network_security_group_id = azurerm_network_security_group.main_nsg.id
+}
+
 resource "random_password" "admin_password" {
-	length = 22
+	length = 12
 	special = true
-	override_special = "_%@"
+	override_special = "_%!£$"
 }
 
 resource "azurerm_windows_virtual_machine" "main_vm" {
@@ -77,11 +84,12 @@ resource "azurerm_windows_virtual_machine" "main_vm" {
 	admin_username		= local.admin_username
 	admin_password		= random_password.admin_password.result
 	allow_extension_operations = true
-	network_interface_ids = [azurerm_network_interface.main_nic.id,]
+	network_interface_ids = [azurerm_network_interface.main_nic.id]
 
 	os_disk {
 		caching					= "ReadWrite"
-		storage_account_type	= "Standard_LRS"
+		storage_account_type	= "StandardSSD_LRS"
+
 	}
 
 	source_image_reference {
@@ -101,18 +109,19 @@ resource "azurerm_virtual_machine_extension" "gpudrivers" {
 	auto_upgrade_minor_version = true
 }
 
-resource "azurerm_virtual_machine_extension" "configureforansbile" {
-	name					= "ConfigureAnsible"
-	virtual_machine_id		= azurerm_windows_virtual_machine.main_vm.id
-	publisher				= "Microsoft.Compute"
-	type					= "CustomScriptExtension"
-	type_handler_version	= "1.9"
+resource "azurerm_virtual_machine_extension" "post_deploy_script" {
+	name = "EnableSSH"
+	virtual_machine_id = azurerm_windows_virtual_machine.main_vm.id
+	publisher = "Microsoft.Azure.Extensions"
+	type = "CustomScript"
+	type_handler_version = "2.0"
+
 	settings = <<SETTINGS
 	{
-		"commandToExecute": "powershell .\\ConfigureRemotingForAnsible.ps1",
-		"fileUris" : ["https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"]
-	 }
+		"commandToExecute": "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0; Start-Service sshd; Set-Service -Name sshd -StartupType 'Automatic';"
+	}
 	SETTINGS
+  
 }
 
 resource "azurerm_dev_test_global_vm_shutdown_schedule" "main_vm_shutdown" {
